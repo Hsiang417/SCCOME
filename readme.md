@@ -41,13 +41,13 @@ This will generate `.mat` files like `KoNViD-1kinfo.mat` containing index lists 
 Extract spatial-temporal features using:
 
 ```bash
-python SCCOME_extract.py --database KoNViD-1k
+python SCCOME extract.py --database KoNViD-1k
 ```
 
 Extracted features will be saved as `.npy` files in `CNN_features_{dataset}` folders, with filenames like:
 
 ```
-{id}_RGBcannyOptreplacedconvnext_3Dmaxmeanstd_features.npy
+{id}SCCOME.npy
 ```
 
 These represent RGB-Canny merged features combined with optical flow and ConvNeXt + 3D statistics.
@@ -59,13 +59,13 @@ These represent RGB-Canny merged features combined with optical flow and ConvNeX
 Run training and evaluation:
 
 ```bash
-python SCCOME.py --database KoNViD-1k --exp_id 0
+python SCCOME test.py --database KoNViD-1k --exp_id 0
 ```
 
 Key arguments:
 
 - `--cross Y` for cross-dataset testing
-- `--model score_test` specifies model variant
+
 - `--epochs`, `--batch_size`, `--lr` for training control
 
 Checkpoints and results will be saved to:
@@ -80,8 +80,8 @@ Checkpoints and results will be saved to:
 ```
 ├── data/                       # Scripts to prepare dataset info
 ├── CNN_features_KoNViD-1k/     # Saved feature files (output)
-├── SCCOME_extract.py           # Feature extraction
-├── SCCOME.py                   # Training & evaluation
+├── SCCOME extract.py           # Feature extraction
+├── SCCOME test.py                   # Training & evaluation
 ├── models/                     # Saved model weights
 ├── results/                    # Evaluation results
 ```
