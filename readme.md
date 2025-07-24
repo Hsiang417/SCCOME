@@ -27,9 +27,9 @@ The pipeline is divided into three main stages:
 Use scripts in the `data/` folder to extract metadata (e.g., frame counts, labels, and max sequence length) for each dataset:
 
 ```bash
-python data/extract_info_KoNViD.py      # for KoNViD-1k
-python data/extract_info_CVD2014.py     # for CVD2014
-python data/extract_info_LIVEQ.py       # for LIVE-Qualcomm
+python data/Kon.m                 # for KoNViD-1k
+python data/CVD2014.m             # for CVD2014
+python data/LIVE_Qualcomm.m       # for LIVE-Qualcomm
 ```
 
 This will generate `.mat` files like `KoNViD-1kinfo.mat` containing index lists and normalization parameters.
