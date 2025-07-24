@@ -430,7 +430,7 @@ class TransformerModel(nn.Module):
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser(description='"VSFA: Quality Assessment of In-the-Wild Videos')
+    parser = ArgumentParser(description='SCCOME')
     parser.add_argument("--seed", type=int, default=19990417)
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate (default: 0.00001)')
     parser.add_argument('--batch_size', type=int, default=16, help='input batch size for training (default: 16)')
