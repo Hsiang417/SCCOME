@@ -4,6 +4,12 @@
 #
 # tensorboard --logdir=logs --port=6006
 # CUDA_VISIBLE_DEVICES=1 python VSFA.py --database=KoNViD-1k --exp_id=0
+#
+# Author: Haoshiang Liao
+# Date: 2024/1/22
+#
+# tensorboard --logdir=logs --port=6006
+# CUDA_VISIBLE_DEVICES=1 python VSFA.py --database=KoNViD-1k --exp_id=0
 
 from argparse import ArgumentParser
 import os
@@ -20,9 +26,6 @@ from tensorboardX import SummaryWriter
 import datetime
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import MinMaxScaler
-import time
-from ptflops import get_model_complexity_info
 
 class VQADataset(Dataset):
     def __init__(self, features_dir='CNN_features_K', index=None, max_len=2, feat_dim=11952, scale=1, batch_size=500):
@@ -30,7 +33,7 @@ class VQADataset(Dataset):
         self.features = []
         self.length = []
         self.mos = []
-
+        self.feat_dim = feat_dim
         for batch_start in range(0, len(index), batch_size):
             batch_end = min(batch_start + batch_size, len(index))
             batch_indices = index[batch_start:batch_end]
@@ -40,7 +43,7 @@ class VQADataset(Dataset):
             batch_mos = []
 
             for idx in batch_indices:
-                features = np.load(features_dir + str(idx) + '_RGBcannyOptreplacedconvnext_3Dmaxmeanstd_features.npy')
+                features = np.load(features_dir + str(idx) + '_CCOME_features.npy')
 
                 # Adjust feature dimension to match feat_dim by padding with zeros if needed
                 if features.shape[1] < feat_dim:
@@ -78,83 +81,6 @@ class VQADataset(Dataset):
     def __getitem__(self, idx):
         sample = self.features[idx], self.length[idx], self.label[idx]
         return sample
-# class VQADataset(Dataset):
-#     def __init__(self, features_dir='CNN_features_KoNViD-1k', index=None, max_len=None, feat_dim=11952, scale=1):
-#         super(VQADataset, self).__init__()
-#         self.features_dir = features_dir
-#         self.index = index
-#         self.max_len = max_len
-#         self.feat_dim = feat_dim
-#         self.scale = scale
-#         self.length = np.zeros((len(index), 1))
-#         self.mos = np.zeros((len(index), 1))
-#         self.file_names = []  # 用於存儲文件名稱
-#
-#         # 動態檢測 max_len
-#         if self.max_len is None:
-#             self.max_len = self._detect_max_len()
-#
-#     def _detect_max_len(self):
-#         max_len = 0
-#         for idx in self.index:
-#             feature_path = self.features_dir + str(idx) + '_RGBcannyOptreplacedconvnext_3Dmaxmeanstd_features.npy'
-#             if not os.path.exists(feature_path):
-#                 continue
-#             features = np.load(feature_path)
-#             max_len = max(max_len, features.shape[0])  # 更新最大時間長度
-#         return max_len
-#
-#     def __len__(self):
-#         return len(self.mos)
-#
-#     def __getitem__(self, idx):
-#         feature_path = self.features_dir + str(
-#             self.index[idx]) + '_RGBcannyOptreplacedconvnext_3Dmaxmeanstd_features.npy'
-#         label_path = self.features_dir + str(self.index[idx]) + '_score.npy'
-#
-#         if not os.path.exists(feature_path) or not os.path.exists(label_path):
-#             raise FileNotFoundError(f"File not found: {feature_path} or {label_path}")
-#
-#         features = np.load(feature_path)
-#         label = np.load(label_path) / self.scale
-#
-#         if features.shape[1] < self.feat_dim:
-#             pad_width = self.feat_dim - features.shape[1]
-#             features = np.pad(features, ((0, 0), (0, pad_width)), mode='symmetric')
-#         elif features.shape[1] > self.feat_dim:
-#             raise ValueError(f"Feature dimension {features.shape[1]} exceeds expected dimension {self.feat_dim}")
-#
-#         if features.shape[0] > self.max_len:
-#             features = features[:self.max_len, :]
-#         else:
-#             pad_length = self.max_len - features.shape[0]
-#             features = np.pad(features, ((0, pad_length), (0, 0)), mode='constant')
-#
-#         self.length[idx] = features.shape[0]
-#         sample = (features, self.length[idx], label)
-#         return sample
-class Mlp(nn.Module):
-    def __init__(self, input_features, hidden_features=256, out_features=1, drop_rate=0.2, act_layer=nn.GELU):
-        super().__init__()
-        self.fc1 = nn.Linear(input_features, hidden_features)
-        # self.bn1 = nn.BatchNorm1d(hidden_features)
-        self.act1 = act_layer()
-        self.drop1 = nn.Dropout(drop_rate)
-        self.fc2 = nn.Linear(hidden_features, hidden_features // 2)
-        self.act2 = act_layer()
-        self.drop2 = nn.Dropout(drop_rate)
-        self.fc3 = nn.Linear(hidden_features // 2, out_features)
-
-    def forward(self, input_feature):
-        x = self.fc1(input_feature)
-        # x = self.bn1(x)
-        x = self.act1(x)
-        x = self.drop1(x)
-        x = self.fc2(x)
-        x = self.act2(x)
-        x = self.drop2(x)
-        output = self.fc3(x)
-        return output
 
 class VQADataset_test(Dataset):
     def __init__(self, features_dir='CNN_features_LSVQ_test', index=None, max_len=2, feat_dim=11952, scale=1):
@@ -213,20 +139,7 @@ class VQADataset_test(Dataset):
         file_name = os.path.basename(feature_path)
         return features, self.length[idx], label, file_name
 
-class FeatureAttention(nn.Module):
-    def __init__(self, feat_dim, hidden_dim=512):
-        super(FeatureAttention, self).__init__()
-        self.attention = nn.Sequential(
-            nn.Linear(feat_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, feat_dim),
-            nn.Sigmoid()  # output shape: (batch, seq_len, feat_dim)
-        )
 
-    def forward(self, x):
-        weights = self.attention(x)  # (batch, seq_len, feat_dim)
-        attended = x * weights       # feature-wise attention
-        return attended
 class FeatureTransformer(nn.Module):
     def __init__(self, patch_size=128, d_model=128, nhead=4, num_layers=2):
         super().__init__()
@@ -262,119 +175,152 @@ class FeatureTransformer(nn.Module):
 
 
         return out
-class GLUBlock(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super().__init__()
-        self.fc = nn.Linear(input_dim, output_dim * 2)
-
-    def forward(self, x):  # (B, T, D)
-        x_proj = self.fc(x)
-        x_out, gate = x_proj.chunk(2, dim=-1)
-        return x_out * torch.sigmoid(gate)
-
 class FC(nn.Module):
     def __init__(
         self,
-        total_input_size=11952   ,
-        split_3d_index=10752,
-        hidden_size_non3d=4096,
+        total_input_size=11952,  # 整體輸入維度 = 4種特徵 + 3D特徵(1200)
+        split_3d_index=10752,    # 前面 14336 是「四種特徵」的維度，後面 (15536-14336)=1200 即是 3D 特徵
+        hidden_size_non3d=4096,  # 用在非3D分支的隱藏維度
         hidden_size_non3d2=2048,
-        hidden_size_3d=400,
-        gru_hidden_size=2048,
-        reduced_size=1024,
+        hidden_size_3d=400,      # 用在3D分支的隱藏維度 (可自行調整)
+        gru_hidden_size=2048,    # GRU 隱藏維度
+        reduced_size=1024,       # 最終輸出的維度
         dropout_p=0.5,
         num_gru_layers=2
     ):
-        super().__init__()
+        super(FC, self).__init__()
+
         self.split_3d_index = split_3d_index
 
-        # MLP 處理 2D 特徵
+        # -----------------------------
+        # 1. MLP for non-3D features
+        # -----------------------------
+        # 假設想要對前面 14336 維的「四種特徵」做一些前饋處理
         self.mlp_non3d = nn.Sequential(
             nn.Linear(split_3d_index, hidden_size_non3d),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout_p),
-            nn.Linear(hidden_size_non3d, hidden_size_non3d2),
+            nn.Linear(hidden_size_non3d, hidden_size_non3d2),  # 再多一層
             nn.GELU(),
             nn.Dropout(dropout_p),
         )
 
-        # MLP 處理 3D 特徵
-        three_d_input_size = total_input_size - split_3d_index
+        # -----------------------------
+        # 2. MLP for 3D features
+        # -----------------------------
+        # 針對 1200 維的 3D 特徵，可以根據需求大小自行決定幾層
+        three_d_input_size = total_input_size - split_3d_index  # 預期=1200
         self.mlp_3d = nn.Sequential(
             nn.Linear(three_d_input_size, hidden_size_3d),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout_p),
+
         )
 
-        # GRU for Q
+        # -----------------------------
+        # 3. GRU
+        # -----------------------------
+        # 合併後的輸入維度 = hidden_size_non3d
+        self.gru_input_dim = hidden_size_non3d2
         self.gru = nn.GRU(
-            input_size=hidden_size_non3d2,
+            input_size=self.gru_input_dim,
             hidden_size=gru_hidden_size,
             num_layers=num_gru_layers,
             batch_first=True,
             bidirectional=True,
-            dropout=dropout_p
+            dropout=dropout_p  # 多層GRU時，官方建議透過這裡設置
         )
 
-        # Attention 投影層
-        attn_dim = gru_hidden_size * 2  # Q 輸出維度
-        self.query_proj = nn.Linear(attn_dim, attn_dim)
-        self.key_proj = nn.Linear(attn_dim, attn_dim)
-        self.value_proj = nn.Linear(attn_dim, attn_dim)
-        self.glu = GLUBlock(10752, 2048)
-        self.scale = attn_dim ** 0.5
-
-        # 最後輸出層
-        GRU_and_3D = attn_dim + hidden_size_3d
+        # -----------------------------
+        # 4. 最終輸出層
+        # -----------------------------
+        # 如果是雙向 GRU，輸出維度 = 2 * gru_hidden_size
+        GRU_and_3D=gru_hidden_size * 2+hidden_size_3d
         self.fc_final = nn.Linear(GRU_and_3D, reduced_size)
 
+        # 欲保留的話，可以再來一層激活或 Dropout，看需求
+        # self.output_activation = nn.GELU()
 
+        # -----------------------------
+        # 初始化
+        # -----------------------------
         self.apply(self.initialize_weights)
+        # Transformer Encoder Layer
+        encoder_layer = nn.TransformerEncoderLayer(d_model=1024, nhead=4)
+        self.feature_transformer = FeatureTransformer(
+
+            patch_size=128,
+            d_model=128,  # 看你要不要相同
+            nhead=4,
+            num_layers=2
+        )
 
     def initialize_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.xavier_uniform_(m.weight)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
-
     def forward(self, x):
+        """
+        x 的 shape 預期為 (batch, seq_len, 15536)
+        其中:
+          - 前 14336 維 (split_3d_index) 對應「四種特徵」
+          - 後面 1200 維 對應「3D 特徵」
+        """
+        # -----------------------------
+        # 0. 檢查 NaN/Inf，若你仍想保留這些檢查
+        # -----------------------------
         if torch.isnan(x).any() or torch.isinf(x).any():
             x = torch.nan_to_num(x, nan=0.0, posinf=1e6, neginf=-1e6)
 
-        # Split 2D / 3D
-        non3d_feats = x[:, :, :self.split_3d_index]      # (B, T, 10752)
-        three_d_feats = x[:, :, self.split_3d_index:]    # (B, T, 1200)
+        # -----------------------------
+        # 1. 分割特徵
+        # -----------------------------
+        non3d_feats = x[:, :, :self.split_3d_index]   # shape: (batch, seq_len, 10752)
+        out_transformer = self.feature_transformer(non3d_feats)
+        batch_size, seq_len, _ = x.shape
 
-        # Feature projection
-        # out_non3d = self.glu(non3d_feats)
-        out_non3d = self.mlp_non3d(non3d_feats)          # (B, T, 2048)
-        out_3d = self.mlp_3d(three_d_feats)              # (B, T, 400)
+        # non3d_feats = self.transformer_encoder(non3d_feats)
+        three_d_feats = x[:, :, self.split_3d_index:] # shape: (batch, seq_len, 1200)
+
+        # -----------------------------
+        # 2. 分別做前饋
+        # -----------------------------
+
+        out_non3d = self.mlp_non3d(out_transformer)    # (batch, seq_len, hidden_size_non3d)
+        # out_non3d = self.transformer_encoder(out_non3d)
+        # if torch.isnan(out_non3d).any() or torch.isinf(out_non3d).any():
+        #     print("NaN or Inf detected in Transformer output!")
+        #     out_non3d = torch.nan_to_num(out_non3d, nan=0.0, posinf=1e6, neginf=-1e6)
+        out_3d = self.mlp_3d(three_d_feats)
+
+        # (batch, seq_len, hidden_size_3d)
+
         # 重新 reshape，每 3 幀一組
-        batch_size, seq_len, _ = non3d_feats.shape
-        out_non3d_Q = out_non3d.view(batch_size, seq_len // 2, 2, out_non3d.shape[-1])  # (16, 80, 3, 2048)
-        out_non3d_Q = out_non3d_Q.view(-1, 2, out_non3d.shape[-1])  # (16*80, 3, 2048)
+        out_non3d = out_non3d.view(batch_size, seq_len // 3, 3, out_non3d.shape[-1])  # (16, 80, 3, 2048)
+        out_non3d = out_non3d.view(-1, 3, out_non3d.shape[-1])  # (16*80, 3, 2048)
 
 
-        # GRU: Q
-        outputs, _ = self.gru(out_non3d_Q)                 # (B, T, 4096)
-        seq_group = seq_len // 2
-        # # 恢復 batch 維度
-        out_non3d_Q = outputs.reshape(batch_size, seq_group, 2, outputs.shape[-1])
-        out_non3d_Q = out_non3d_Q.reshape(batch_size, seq_group * 2, outputs.shape[-1])
-        # print(out_non3d_Q.shape)
-        Q = self.query_proj(out_non3d_Q)                     # (B, T, 4096)
+        # -----------------------------
+        # 3. 特徵拼接後進入 GRU
+        # -----------------------------
+        outputs, _ = self.gru(out_non3d)
+        seq_group = seq_len // 3
+        # 恢復 batch 維度
+        outputs = outputs.reshape(batch_size, seq_group, 3, outputs.shape[-1])
+        outputs = outputs.reshape(batch_size, seq_group * 3, outputs.shape[-1])
 
-        # Attention: K/V from original non3d features
-        K = self.key_proj(out_non3d_Q)                     # (B, T, 4096)
-        V = self.value_proj(out_non3d_Q)                   # (B, T, 4096)
+        combined = torch.cat([outputs, out_3d], dim=-1)
 
-        attn_weights = torch.matmul(Q, K.transpose(-2, -1)) / self.scale  # (B, T, T)
-        attn_weights = torch.softmax(attn_weights, dim=-1)                # (B, T, T)
-        attended = torch.matmul(attn_weights, V)                          # (B, T, 4096)
 
-        # Combine with 3D features
-        combined = torch.cat([attended, out_3d], dim=-1)  # (B, T, 4096+400)
-        outputs = self.fc_final(combined)                # (B, T, 1024)
+        # -----------------------------
+        # 4. 最終輸出層
+        # -----------------------------
+        outputs = self.fc_final(combined)  # (batch, seq_len, reduced_size)
+
+        # 如果想要再加個 activation 或 dropout：
+        # outputs = self.output_activation(outputs)
+
         return outputs
 
 
@@ -390,13 +336,7 @@ def TP(q, tau=12, beta=0.5):
     return beta * m + (1 - beta) * l
 
 
-def ranking_loss(pred, target):
-    return F.margin_ranking_loss(
-        pred.unsqueeze(0) - pred.unsqueeze(1),
-        target.unsqueeze(0) - target.unsqueeze(1),
-        torch.sign(target.unsqueeze(0) - target.unsqueeze(1)),
-        margin=0.0,
-    )
+
 
 
 
@@ -404,8 +344,11 @@ def ranking_loss(pred, target):
 class TransformerModel(nn.Module):
     def __init__(self, input_size=11952, reduced_size=1024, nhead=8, num_encoder_layers=2):
         super(TransformerModel, self).__init__()
-        self.feature_attention = FeatureAttention(input_size)  # <== 新增
         self.FC = FC(dropout_p=0.5)
+
+
+
+        self.GRU = nn.GRU(2048, hidden_size=512, num_layers=2, batch_first=True, bidirectional=True)
         self.q = nn.Linear(1024, 1)
         self.attention_weights = nn.Linear(2048, 1)
 
@@ -415,22 +358,28 @@ class TransformerModel(nn.Module):
             if file_name:
                 print(f"Problematic file: {file_name}")
 
-        # Apply attention mechanism over feature dimension
-        # input = self.feature_attention(input)  # <== 加上 attention
+
         input = self.FC(input)
+        # print(f"FC output min: {input.min()}, max: {input.max()}")
+        # print(input)
+
 
         q = self.q(input)
         score = torch.zeros_like(input_length, device=q.device)
+        # print(q)
+
         for i in range(input_length.shape[0]):
             qi = q[i, :int(input_length[i].item())]
             qi = TP(qi)
             score[i] = torch.mean(qi)
 
+
         return score
 
 
+
 if __name__ == "__main__":
-    parser = ArgumentParser(description='SCCOME')
+    parser = ArgumentParser(description='"VSFA: Quality Assessment of In-the-Wild Videos')
     parser.add_argument("--seed", type=int, default=19990417)
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate (default: 0.00001)')
     parser.add_argument('--batch_size', type=int, default=16, help='input batch size for training (default: 16)')
@@ -555,9 +504,40 @@ if __name__ == "__main__":
             test_loader = torch.utils.data.DataLoader(dataset=test_dataset)
     model = TransformerModel().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # (新) 這裡插入計算 FLOPs 及參數數量的程式碼
+    # -------------------------------------------------------------
+    from thop import profile
+    from torchinfo import summary
 
+    # 建立一個假的輸入，來進行 FLOPs/params 的估計
+    # 通常 batch_size 可能設成 1 或 16 均可。
+    # 記得要跟模型 forward() 所需要的參數一致
+    fake_batch_size = 1
+    dummy_input = torch.randn(fake_batch_size, max_len, train_dataset.feat_dim).to(device)
+    dummy_length = torch.randint(1, max_len + 1, (fake_batch_size,), dtype=torch.int).to(device)
+    # label 也要丟，但其實在 THOP 只要 forward() input, length, i, label
+    #   i 跟 label 要給定個 placeholder，否則 forward() 會出錯。
+    fake_label = torch.zeros(fake_batch_size).to(device)
+
+    # profile 計算 FLOPs 和參數
+    flops, params = profile(model, inputs=(dummy_input, dummy_length, 0, fake_label))
+
+    print(f"\n[Model Complexity]")
+    print(f"  - Total FLOPs: {flops / 1e9:.4f} GFLOPs")
+    print(f"  - Total Params: {params / 1e6:.4f} M\n")
+
+    # 也可以用 torchinfo.summary 來查看模型結構
+    print("[Model Summary]")
+    summary(
+        model,
+        input_data=(dummy_input, dummy_length, 0, fake_label),  # 這裡是一個 tuple
+        col_names=("input_size", "output_size", "num_params", "params_percent"),
+    )
+    print("-" * 60, "\n")
+
+    ###########################
     if args.usecheckpoint =='Y':
-        checkpoint = torch.load('KoNViD-1k_trained_model.pth')
+        checkpoint = torch.load('KoNViD-1ktest_trained_model.pth')
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch']  # 取得訓練到的 epoch
@@ -583,41 +563,7 @@ if __name__ == "__main__":
     criterion = nn.L1Loss()  # L1 loss
     # optimizer = Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=args.decay_interval, gamma=args.decay_ratio)
-    # ==== Inference Profile ====
-    print("🔍 Running inference profiling...")
 
-    # Dummy input (batch=1, seq_len=240, feat_dim=11952)
-    dummy_input = torch.randn(1, 240, 11952).to(device)
-    dummy_length = torch.tensor([240.0]).to(device)
-    dummy_label = torch.tensor([0.5]).to(device)
-
-    # 推理時間與記憶體開銷
-    model.eval()
-    with torch.no_grad():
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
-
-        start_time = time.time()
-        output = model(dummy_input, dummy_length, 0, dummy_label)
-        end_time = time.time()
-
-        inference_time = end_time - start_time
-        peak_memory = torch.cuda.max_memory_allocated(device) / 1024 ** 2  # MB
-
-    print(f"🕒 推理時間（單一樣本）: {inference_time:.6f} 秒")
-    print(f"💾 峰值記憶體使用量: {peak_memory:.2f} MB")
-
-    # 模型參數量
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"🔢 模型參數總數: {total_params / 1e6:.2f} M")
-
-    # FLOPs: 只對 FC 子模組計算
-    fc_model = model.FC
-    with torch.cuda.device(0):
-        macs, params = get_model_complexity_info(fc_model, (240, 11952), as_strings=True,
-                                                 print_per_layer_stat=False, verbose=False)
-        print(f"⚙️ 計算量（FLOPs）: {macs}")
-        print(f"🧮 參數數量（僅FC）: {params}")
     # for epoch in range(start_epoch, start_epoch + total_new_epochs):
     for epoch in range(start_epoch,args.epochs):
         # Train
@@ -631,9 +577,6 @@ if __name__ == "__main__":
             length = length.to(device).float()
             optimizer.zero_grad()  #
             outputs = model(features, length,i,label )
-            # l1_loss = criterion(outputs, label)
-            # rank_loss = ranking_loss(outputs, label)
-            # loss = l1_loss + 0.1 * rank_loss
             loss = criterion(outputs, label)
             loss.backward()
             optimizer.step()
