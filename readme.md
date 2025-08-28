@@ -55,7 +55,7 @@ These represent RGB-Canny merged features combined with optical flow and ConvNeX
 ---
 
 ### 3. Quality Score Prediction
-
+When training, the FD-VQA_test program is used to test the prediction score using the model with the best validation score. If you need to adjust the training ratio, you can adjust it in args.
 Run training and evaluation:
 
 ```bash
